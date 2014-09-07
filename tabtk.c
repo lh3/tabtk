@@ -88,7 +88,7 @@ int main_cut(int argc, char *argv[])
 		cols.n = k;
 	}
 
-	fp = (optind == argc && !isatty(fileno(stdin))) || strcmp(argv[optind], "-") == 0? gzdopen(fileno(stdin), "r") : gzopen(argv[optind], "r");
+	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
 	ks = ks_init(fp);
 	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
 		int b, i;
@@ -154,7 +154,7 @@ int main_num(int argc, char *argv[])
 		fprintf(stderr, "Notes: number, mean, min, max[, std.dev, skewness, 25%%-percentile, median, 75%%, 2.5%%, 97.5%%]\n\n");
 		return 1;
 	}
-	fp = (optind == argc && !isatty(fileno(stdin))) || strcmp(argv[optind], "-") == 0? gzdopen(fileno(stdin), "r") : gzopen(argv[optind], "r");
+	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
 	ks = ks_init(fp);
 	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
 		int i, beg;
@@ -220,8 +220,7 @@ int main_num(int argc, char *argv[])
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk <command> [arguments]\n");
-	fprintf(stderr, "Version: 0.0\n\n");
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 1);
 	fprintf(stderr, "Command: cut       Unix cut with optional column reordering\n");
 	fprintf(stderr, "         num       summary statistics on a single numerical column\n");
 	fprintf(stderr, "\n");

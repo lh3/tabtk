@@ -21,6 +21,39 @@ typedef kvec_t(uint32_t) vec32_t;
 typedef kvec_t(uint64_t) vec64_t;
 typedef kvec_t(double) vecdbl_t;
 
+static int ttk_parse_cols(vec64_t *cols, const char *str, int reorder)
+{
+	int32_t beg, end, x;
+	char *p = (char*)str;
+	cols->n = 0;
+	while ((x = strtol(p, &p, 10)) > 0) { // parse the field string
+		beg = end = x;
+		if (*p == '-')
+			end = (x = strtol(p + 1, &p, 10)) >= beg? x : INT32_MAX;
+		kv_push(uint64_t, *cols, (uint64_t)(beg-1)<<32 | end);
+		if (*p) ++p; // skip ','
+		else break;
+	}
+	if (*p) return -1;
+	if (!reorder) {
+		uint64_t *i;
+		int j, k;
+		for (i = cols->a + 1; i < cols->a + cols->n; ++i) // insertion sort
+			if (*i < *(i - 1)) {
+				uint64_t *j, tmp = *i;
+				for (j = i; j > cols->a && tmp < *(j-1); --j) *j = *(j - 1);
+				*j = tmp;
+			}
+		for (j = k = 1; j < cols->n; ++j) { // merge overlapping col regions
+			if (cols->a[j]>>32 <= (uint32_t)cols->a[k-1])
+				cols->a[k-1] = cols->a[k-1]>>32<<32 | (uint32_t)cols->a[j];
+			else cols->a[k++] = cols->a[j];
+		}
+		cols->n = k;
+	}
+	return 0;
+}
+
 int main_cut(int argc, char *argv[])
 {
 	vec64_t cols = {0,0,0}, buf = {0,0,0};
@@ -28,6 +61,7 @@ int main_cut(int argc, char *argv[])
 	kstream_t *ks;
 	kstring_t str = {0,0,0}, out = {0,0,0};
 	int dret, sep = '\t', c, reorder = 0, skip_char = -1;
+	const char *fields = 0;
 
 	while ((c = getopt(argc, argv, "rd:f:S:")) >= 0) {
 		if (c == 'r') reorder = 1;
@@ -39,22 +73,7 @@ int main_cut(int argc, char *argv[])
 				fprintf(stderr, "[E::%s] invalid delimitor\n", __func__);
 				return 1;
 			}
-		} else if (c == 'f') {
-			int32_t beg, end, x;
-			char *p = optarg;
-			while ((x = strtol(p, &p, 10)) > 0) { // parse the field string
-				beg = end = x;
-				if (*p == '-')
-					end = (x = strtol(p + 1, &p, 10)) >= beg? x : INT32_MAX;
-				kv_push(uint64_t, cols, (uint64_t)(beg-1)<<32 | end);
-				if (*p) ++p; // skip ','
-				else break;
-			}
-			if (*p) {
-				fprintf(stderr, "[E::%s] malformated field string. Abort!\n", __func__);
-				return 1;
-			}
-		}
+		} else if (c == 'f') fields = optarg;
 	}
 	
 	if (argc == optind && isatty(fileno(stdin))) {
@@ -66,26 +85,15 @@ int main_cut(int argc, char *argv[])
 		return 1;
 	}
 
-	if (cols.n == 0) {
+	if (fields == 0) {
 		fprintf(stderr, "[E::%s] no list of fields is specified.\n", __func__);
 		return 2;
 	}
 
-	if (!reorder) {
-		uint64_t *i;
-		int j, k;
-		for (i = cols.a + 1; i < cols.a + cols.n; ++i) // insertion sort
-			if (*i < *(i - 1)) {
-				uint64_t *j, tmp = *i;
-				for (j = i; j > cols.a && tmp < *(j-1); --j) *j = *(j - 1);
-				*j = tmp;
-			}
-		for (j = k = 1; j < cols.n; ++j) { // merge overlapping col regions
-			if (cols.a[j]>>32 <= (uint32_t)cols.a[k-1])
-				cols.a[k-1] = cols.a[k-1]>>32<<32 | (uint32_t)cols.a[j];
-			else cols.a[k++] = cols.a[j];
-		}
-		cols.n = k;
+	if (ttk_parse_cols(&cols, fields, reorder) < 0) {
+		fprintf(stderr, "[E::%s] wrong fields format\n", __func__);
+		free(cols.a);
+		return 1;
 	}
 
 	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
@@ -220,7 +228,7 @@ int main_num(int argc, char *argv[])
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 1);
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 3);
 	fprintf(stderr, "Command: cut       Unix cut with optional column reordering\n");
 	fprintf(stderr, "         num       summary statistics on a single numerical column\n");
 	fprintf(stderr, "\n");

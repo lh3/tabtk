@@ -17,11 +17,17 @@ KSORT_INIT_GENERIC(double)
 #include "kseq.h"
 KSTREAM_INIT(gzFile, gzread, 65536)
 
+#define SEP_ISSPACE 256
+
 typedef kvec_t(uint32_t) vec32_t;
 typedef kvec_t(uint64_t) vec64_t;
 typedef kvec_t(double) vecdbl_t;
 
-static int ttk_parse_cols(vec64_t *cols, const char *str, int reorder)
+/************************
+ *** Generic routines ***
+ ************************/
+
+int ttk_parse_cols(vec64_t *cols, const char *str, int reorder)
 {
 	int32_t beg, end, x;
 	char *p = (char*)str;
@@ -34,7 +40,10 @@ static int ttk_parse_cols(vec64_t *cols, const char *str, int reorder)
 		if (*p) ++p; // skip ','
 		else break;
 	}
-	if (*p) return -1;
+	if (*p) {
+		cols->n = 0;
+		return -1;
+	}
 	if (!reorder) {
 		uint64_t *i;
 		int j, k;
@@ -54,6 +63,41 @@ static int ttk_parse_cols(vec64_t *cols, const char *str, int reorder)
 	return 0;
 }
 
+static inline void ttk_split(vec64_t *buf, int sep, int len, const char *str)
+{
+	int i, b;
+	buf->n = 0;
+	if (sep >= 0 && sep < 256) {
+		for (i = b = 0; i <= len; ++i) // mark columns
+			if (i == len || str[i] == sep) {
+				kv_push(uint64_t, *buf, (uint64_t)b<<32 | i);
+				b = i + 1;
+			}
+	} else if (sep == 256) {
+		for (i = b = 0; i <= len; ++i) // mark columns
+			if (i == len || isspace(str[i])) {
+				kv_push(uint64_t, *buf, (uint64_t)b<<32 | i);
+				b = i + 1;
+			}
+	}
+}
+
+int ttk_parse_sep(const char *s)
+{
+	int sep;
+	if (strcmp(s, "isspace") == 0 || strcmp(s, "space") == 0) sep = 256;
+	else if (strlen(s) == 1) sep = s[0];
+	else {
+		fprintf(stderr, "[E::%s] multiple delimitors are not supported\n", __func__);
+		return -1;
+	}
+	return sep;
+}
+
+/***********
+ *** cut ***
+ ***********/
+
 int main_cut(int argc, char *argv[])
 {
 	vec64_t cols = {0,0,0}, buf = {0,0,0};
@@ -66,14 +110,10 @@ int main_cut(int argc, char *argv[])
 	while ((c = getopt(argc, argv, "rd:f:S:")) >= 0) {
 		if (c == 'r') reorder = 1;
 		else if (c == 'S') skip_char = optarg[0];
+		else if (c == 'f') fields = optarg;
 		else if (c == 'd') {
-			if (strcmp(optarg, "isspace") == 0) sep = 256;
-			else if (strlen(optarg) == 1) sep = optarg[0];
-			else {
-				fprintf(stderr, "[E::%s] invalid delimitor\n", __func__);
-				return 1;
-			}
-		} else if (c == 'f') fields = optarg;
+			if ((sep = ttk_parse_sep(optarg)) < 0) return 1;
+		}
 	}
 	
 	if (argc == optind && isatty(fileno(stdin))) {
@@ -99,26 +139,13 @@ int main_cut(int argc, char *argv[])
 	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
 	ks = ks_init(fp);
 	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
-		int b, i;
+		int i;
 		if (skip_char >= 0 && str.s[0] == skip_char) {
 			puts(str.s);
 			continue;
 		}
-		buf.n = 0; out.l = 0;
-		if (sep == 256) {
-			for (i = b = 0; i <= str.l; ++i) // mark columns
-				if (isspace(str.s[i]) || i == str.l) {
-					kv_push(uint64_t, buf, (uint64_t)b<<32 | i);
-					b = i + 1;
-				}
-		} else {
-			for (i = b = 0; i <= str.l; ++i) // mark columns
-				if (str.s[i] == sep || i == str.l) {
-					kv_push(uint64_t, buf, (uint64_t)b<<32 | i);
-					b = i + 1;
-				}
-		}
-		for (i = 0; i < cols.n; ++i) { // print columns
+		ttk_split(&buf, sep, str.l, str.s);
+		for (i = 0, out.l = 0; i < cols.n; ++i) { // print columns
 			int32_t j, beg = cols.a[i]>>32, end = (int32_t)cols.a[i];
 			for (j = beg; j < end && j < buf.n; ++j) {
 				uint64_t x = buf.a[j];
@@ -134,6 +161,102 @@ int main_cut(int argc, char *argv[])
 	free(str.s); free(out.s); free(cols.a); free(buf.a);
 	return 0;
 }
+
+/*****************
+ *** intersect ***
+ *****************/
+
+#include "khash.h"
+KHASH_SET_INIT_STR(strset)
+
+int main_isct(int argc, char *argv[])
+{
+	vec64_t cols1 = {0,0,0}, cols2 = {0,0,0}, buf = {0,0,0};
+	char *fields1 = 0, *fields2 = 0;
+	gzFile fp;
+	kstream_t *ks;
+	kstring_t str = {0,0,0}, key = {0,0,0};
+	int c, dret, sep = '\t', is_comp = 0, skip_char = -1;
+	khash_t(strset) *h;
+
+	while ((c = getopt(argc, argv, "c1:2:d:S")) >= 0) {
+		if (c == '1') fields1 = optarg;
+		else if (c == '2') fields2 = optarg;
+		else if (c == 'c') is_comp = 1;
+		else if (c == 'S') skip_char = optarg[0];
+		else if (c == 'd') {
+			if ((sep = ttk_parse_sep(optarg)) < 0) return 1;
+		}
+	}
+
+	if (optind + 1 > argc || (optind + 2 > argc && isatty(fileno(stdin)))) {
+		fprintf(stderr, "\nUsage:   tabtk isct [options] <loaded.txt> <streamed.txt>\n\n");
+		fprintf(stderr, "Options: -1 STR    field(s) of the loaded file [1]\n");
+		fprintf(stderr, "         -2 STR    field(s) of the streamed file [1]\n");
+		fprintf(stderr, "         -d CHAR   delimitor [TAB]\n");
+		fprintf(stderr, "         -S CHAR   skip lines starting with CHAR [null]\n");
+		fprintf(stderr, "         -c        print lines not present in loaded.txt\n");
+		fputc('\n', stderr);
+		return 1;
+	}
+
+	if (fields1 == 0) kv_push(uint64_t, cols1, 0ULL<<32|1);
+	else ttk_parse_cols(&cols1, fields1, 0);
+	if (fields2 == 0) kv_push(uint64_t, cols2, 0ULL<<32|1);
+	else ttk_parse_cols(&cols2, fields2, 0);
+
+	h = kh_init(strset);
+	fp = gzopen(argv[optind], "r");
+	ks = ks_init(fp);
+	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
+		int i, absent;
+		khint_t k;
+		if (str.l == 0) continue;
+		if (skip_char >= 0 && str.s[0] == skip_char) continue;
+		ttk_split(&buf, sep, str.l, str.s);
+		for (i = 0, key.l = 0; i < cols1.n; ++i) {
+			int32_t j, beg = cols1.a[i]>>32, end = (int32_t)cols1.a[i];
+			for (j = beg; j < end && j < buf.n; ++j) {
+				uint64_t x = buf.a[j];
+				if (key.l) kputc('\t', &key);
+				kputsn(&str.s[x>>32], (uint32_t)x - (x>>32), &key);
+			}
+		}
+		k = kh_put(strset, h, key.s, &absent);
+		if (absent) kh_key(h, k) = strdup(key.s);
+	}
+	ks_destroy(ks);
+	gzclose(fp);
+
+	fp = optind + 1 < argc && strcmp(argv[optind+1], "-")? gzopen(argv[optind+1], "r") : gzdopen(fileno(stdin), "r");
+	ks = ks_init(fp);
+	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
+		int i, present;
+		if (str.l == 0) continue;
+		if (skip_char >= 0 && str.s[0] == skip_char) continue;
+		ttk_split(&buf, sep, str.l, str.s);
+		for (i = 0, key.l = 0; i < cols2.n; ++i) {
+			int32_t j, beg = cols2.a[i]>>32, end = (int32_t)cols2.a[i];
+			for (j = beg; j < end && j < buf.n; ++j) {
+				uint64_t x = buf.a[j];
+				if (key.l) kputc('\t', &key);
+				kputsn(&str.s[x>>32], (uint32_t)x - (x>>32), &key);
+			}
+		}
+		present = (kh_get(strset, h, key.s) != kh_end(h));
+		if (present != is_comp) puts(str.s);
+	}
+	ks_destroy(ks);
+	gzclose(fp);
+
+	free(str.s); free(key.s); free(buf.a); free(cols1.a); free(cols2.a);
+	kh_destroy(strset, h);
+	return 0;
+}
+
+/***********
+ *** num ***
+ ***********/
 
 int main_num(int argc, char *argv[])
 {
@@ -228,9 +351,10 @@ int main_num(int argc, char *argv[])
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 3);
-	fprintf(stderr, "Command: cut       Unix cut with optional column reordering\n");
-	fprintf(stderr, "         num       summary statistics on a single numerical column\n");
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 4);
+	fprintf(stderr, "Command: cut         Unix cut with optional column reordering\n");
+	fprintf(stderr, "         num         summary statistics on a single numerical column\n");
+	fprintf(stderr, "         isct        intersect two files\n");
 	fprintf(stderr, "\n");
 	return 1;
 }
@@ -240,6 +364,7 @@ int main(int argc, char *argv[])
 	if (argc == 1) return usage();
 	if (strcmp(argv[1], "cut") == 0) main_cut(argc-1, argv+1);
 	else if (strcmp(argv[1], "num") == 0) main_num(argc-1, argv+1);
+	else if (strcmp(argv[1], "isct") == 0 || strcmp(argv[1], "intersect") == 0) main_isct(argc-1, argv+1);
 	else {
 		fprintf(stderr, "[main] unrecognized commad '%s'. Abort!\n", argv[1]);
 		return 1;

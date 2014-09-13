@@ -17,7 +17,8 @@ KSORT_INIT_GENERIC(double)
 #include "kseq.h"
 KSTREAM_INIT(gzFile, gzread, 65536)
 
-#define SEP_ISSPACE 256
+#define SEP_SPACE 256
+#define SEP_CSV   257
 
 typedef kvec_t(uint32_t) vec32_t;
 typedef kvec_t(uint64_t) vec64_t;
@@ -73,19 +74,32 @@ static inline void ttk_split(vec64_t *buf, int sep, int len, const char *str)
 				kv_push(uint64_t, *buf, (uint64_t)b<<32 | i);
 				b = i + 1;
 			}
-	} else if (sep == 256) {
+	} else if (sep == SEP_SPACE) {
 		for (i = b = 0; i <= len; ++i) // mark columns
 			if (i == len || isspace(str[i])) {
 				kv_push(uint64_t, *buf, (uint64_t)b<<32 | i);
 				b = i + 1;
 			}
+	} else if (sep == SEP_CSV) {
+		int state = 0;
+		for (i = b = 0; i <= len; ++i) {
+			if (i == len || (state == 0 && str[i] == ',')) {
+				kv_push(uint64_t, *buf, (uint64_t)b<<32 | i);
+				b = i + 1;
+			} else if (state == 1 && str[i] == '\\') {
+				if (i < len - 1) ++i;
+			} else if (str[i] == '"') {
+				state ^= 1;
+			}
+		}
 	}
 }
 
 int ttk_parse_sep(const char *s)
 {
 	int sep;
-	if (strcmp(s, "isspace") == 0 || strcmp(s, "space") == 0) sep = 256;
+	if (strcmp(s, "isspace") == 0 || strcmp(s, "space") == 0) sep = SEP_SPACE;
+	else if (strcmp(s, "csv") == 0) sep = SEP_CSV;
 	else if (strlen(s) == 1) sep = s[0];
 	else {
 		fprintf(stderr, "[E::%s] multiple delimitors are not supported\n", __func__);
@@ -118,7 +132,7 @@ int main_cut(int argc, char *argv[])
 	
 	if (argc == optind && isatty(fileno(stdin))) {
 		fprintf(stderr, "\nUsage: tabtk cut [options] [file.txt]\n\n");
-		fprintf(stderr, "Options: -d CHAR     delimitor, a single CHAR or 'space' for both SPACE and TAB [TAB]\n");
+		fprintf(stderr, "Options: -d CHAR     delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
 		fprintf(stderr, "         -S CHAR     keep full lines starting with CHAR [null]\n");
 		fprintf(stderr, "         -f STR      fields to cut; format identical to Unix cut [null]\n");
 		fprintf(stderr, "         -r          reorder fields\n\n");
@@ -352,7 +366,7 @@ int main_num(int argc, char *argv[])
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 6);
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 7);
 	fprintf(stderr, "Command: cut         Unix cut with optional column reordering\n");
 	fprintf(stderr, "         num         summary statistics on a single numerical column\n");
 	fprintf(stderr, "         isct        intersect two files\n");

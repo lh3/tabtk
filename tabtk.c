@@ -192,7 +192,7 @@ int main_isct(int argc, char *argv[])
 	if (optind + 1 > argc || (optind + 2 > argc && isatty(fileno(stdin)))) {
 		fprintf(stderr, "\nUsage:   tabtk isct [options] <loaded.txt> <streamed.txt>\n\n");
 		fprintf(stderr, "Options: -1 STR    field(s) of the loaded file [1]\n");
-		fprintf(stderr, "         -2 STR    field(s) of the streamed file [1]\n");
+		fprintf(stderr, "         -2 STR    field(s) of the streamed file [same as -1]\n");
 		fprintf(stderr, "         -d CHAR   delimitor [TAB]\n");
 		fprintf(stderr, "         -S CHAR   skip lines starting with CHAR [null]\n");
 		fprintf(stderr, "         -c        print lines not present in loaded.txt\n");
@@ -202,6 +202,7 @@ int main_isct(int argc, char *argv[])
 
 	if (fields1 == 0) kv_push(uint64_t, cols1, 0ULL<<32|1);
 	else ttk_parse_cols(&cols1, fields1, 0);
+	if (fields2 == 0) fields2 = fields1;
 	if (fields2 == 0) kv_push(uint64_t, cols2, 0ULL<<32|1);
 	else ttk_parse_cols(&cols2, fields2, 0);
 
@@ -351,7 +352,7 @@ int main_num(int argc, char *argv[])
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 4);
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 5);
 	fprintf(stderr, "Command: cut         Unix cut with optional column reordering\n");
 	fprintf(stderr, "         num         summary statistics on a single numerical column\n");
 	fprintf(stderr, "         isct        intersect two files\n");

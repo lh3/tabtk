@@ -118,7 +118,7 @@ int main_cut(int argc, char *argv[])
 	
 	if (argc == optind && isatty(fileno(stdin))) {
 		fprintf(stderr, "\nUsage: tabtk cut [options] [file.txt]\n\n");
-		fprintf(stderr, "Options: -d CHAR     delimitor, a single CHAR or 'isspace' for both SPACE and TAB [TAB]\n");
+		fprintf(stderr, "Options: -d CHAR     delimitor, a single CHAR or 'space' for both SPACE and TAB [TAB]\n");
 		fprintf(stderr, "         -S CHAR     keep full lines starting with CHAR [null]\n");
 		fprintf(stderr, "         -f STR      fields to cut; format identical to Unix cut [null]\n");
 		fprintf(stderr, "         -r          reorder fields\n\n");
@@ -352,7 +352,7 @@ int main_num(int argc, char *argv[])
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 5);
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 6);
 	fprintf(stderr, "Command: cut         Unix cut with optional column reordering\n");
 	fprintf(stderr, "         num         summary statistics on a single numerical column\n");
 	fprintf(stderr, "         isct        intersect two files\n");

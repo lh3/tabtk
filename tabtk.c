@@ -363,26 +363,110 @@ int main_num(int argc, char *argv[])
 	return 0;
 }
 
+/************
+ *** grep ***
+ ************/
+
+#include "regexp9.h"
+
+static inline int grep1(Reprog *p, char *s, int start, int end)
+{
+	int ret, c = s[end];
+	s[end] = 0;
+	ret = regexec9(p, &s[start], 0, 0);
+	s[end] = c;
+	return ret;
+}
+
+int main_grep(int argc, char *argv[])
+{
+	vec64_t cols = {0,0,0}, buf = {0,0,0};
+	Reprog *p;
+	gzFile fp;
+	kstream_t *ks;
+	const char *fields = 0;
+	int show_lineno = 0, match = 0, i, j, dret, c, sep = '\t';
+	long lineno = 0;
+	kstring_t str = {0,0,0};
+
+	while ((c = getopt(argc, argv, "f:d:n")) >= 0) {
+		if (c == 'f') fields = optarg;
+		else if (c == 'n') show_lineno = 1;
+		else if (c == 'd') {
+			if ((sep = ttk_parse_sep(optarg)) < 0) return 1;
+		}
+	}
+	if (argc == optind || (argc == optind + 1 && isatty(fileno(stdin)))) {
+		fprintf(stderr, "\nUsage: tabtk grep [options] <pattern> [file.txt]\n\n");
+		fprintf(stderr, "Options: -d CHAR    delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
+		fprintf(stderr, "         -f STR     fields [null]\n");
+		fprintf(stderr, "         -n         output matching line number and column number");
+		fprintf(stderr, "\n");
+		return 1;
+	}
+	if (fields && ttk_parse_cols(&cols, fields, 0) < 0) {
+		fprintf(stderr, "[E::%s] wrong fields format\n", __func__);
+		free(cols.a);
+		return 1;
+	}
+
+	p = regcomp9(argv[optind]);
+	fp = optind+1 < argc && strcmp(argv[optind], "-")? gzopen(argv[optind+1], "r") : gzdopen(fileno(stdin), "r");
+	ks = ks_init(fp);
+	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
+		++lineno;
+		ttk_split(&buf, sep, str.l, str.s);
+		if (fields == 0) {
+			for (j = 0; j < buf.n; ++j)
+				if (grep1(p, str.s, buf.a[j]>>32, (uint32_t)buf.a[j])) {
+					if (show_lineno) printf("%ld\t%d\t", lineno, j+1);
+					puts(str.s);
+					match = 1;
+					break;
+				}
+		} else {
+			for (i = 0; i < cols.n; ++i) {
+				int32_t start = cols.a[i]>>32, end = (int32_t)cols.a[i];
+				for (j = start; j < end && j < buf.n; ++j)
+					if (grep1(p, str.s, buf.a[j]>>32, (uint32_t)buf.a[j])) {
+						if (show_lineno) printf("%ld\t%d\t", lineno, j+1);
+						puts(str.s);
+						match = 1;
+						break;
+					}
+				if (j < end && j < buf.n) break;
+			}
+		}
+	}
+	ks_destroy(ks);
+	gzclose(fp);
+	free(p);
+	return !match; // for grep, if no lines match, the return code is 1
+}
+
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 7);
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 8);
 	fprintf(stderr, "Command: cut         Unix cut with optional column reordering\n");
 	fprintf(stderr, "         num         summary statistics on a single numerical column\n");
 	fprintf(stderr, "         isct        intersect two files\n");
+	fprintf(stderr, "         grep        field-aware grep (slower than Unix grep)\n");
 	fprintf(stderr, "\n");
 	return 1;
 }
 
 int main(int argc, char *argv[])
 {
+	int ret = 1;
 	if (argc == 1) return usage();
-	if (strcmp(argv[1], "cut") == 0) main_cut(argc-1, argv+1);
-	else if (strcmp(argv[1], "num") == 0) main_num(argc-1, argv+1);
-	else if (strcmp(argv[1], "isct") == 0 || strcmp(argv[1], "intersect") == 0) main_isct(argc-1, argv+1);
+	if (strcmp(argv[1], "cut") == 0) ret = main_cut(argc-1, argv+1);
+	else if (strcmp(argv[1], "num") == 0) ret = main_num(argc-1, argv+1);
+	else if (strcmp(argv[1], "isct") == 0 || strcmp(argv[1], "intersect") == 0) ret = main_isct(argc-1, argv+1);
+	else if (strcmp(argv[1], "grep") == 0) ret = main_grep(argc-1, argv+1);
 	else {
 		fprintf(stderr, "[main] unrecognized commad '%s'. Abort!\n", argv[1]);
 		return 1;
 	}
-	return 0;
+	return ret;
 }

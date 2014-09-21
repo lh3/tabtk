@@ -9,8 +9,8 @@ CFLAGS=-g -Wall -O2 -Wno-unused-function
 
 all:$(PROG)
 
-tabtk:tabtk.o kseq.h kstring.h
-		$(CC) $(CFLAGS) tabtk.c -o $@ -lz -lm
+tabtk:tabtk.o regexp9.o kseq.h kstring.h
+		$(CC) $(CFLAGS) tabtk.o regexp9.o -o $@ -lz -lm
 
 clean:
 		rm -fr gmon.out *.o ext/*.o a.out $(PROG) *~ *.a *.dSYM session*
@@ -21,4 +21,4 @@ depend:
 # DO NOT DELETE THIS LINE -- make depend depends on it.
 
 regexp9.o: regexp9.h
-tabtk.o: kvec.h kstring.h ksort.h kseq.h
+tabtk.o: kvec.h kstring.h ksort.h kseq.h khash.h regexp9.h

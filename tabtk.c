@@ -400,7 +400,7 @@ int main_grep(int argc, char *argv[])
 		fprintf(stderr, "\nUsage: tabtk grep [options] <pattern> [file.txt]\n\n");
 		fprintf(stderr, "Options: -d CHAR    delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
 		fprintf(stderr, "         -f STR     fields [null]\n");
-		fprintf(stderr, "         -n         output matching line number and column number");
+		fprintf(stderr, "         -n         output matching line number and column number\n");
 		fprintf(stderr, "\n");
 		return 1;
 	}
@@ -444,10 +444,40 @@ int main_grep(int argc, char *argv[])
 	return !match; // for grep, if no lines match, the return code is 1
 }
 
+/***************
+ *** csv2tab ***
+ ***************/
+
+int main_csv2tab(int argc, char *argv[])
+{
+	gzFile fp;
+	kstream_t *ks;
+	int c, sep = SEP_CSV, dret;
+	kstring_t str = {0,0,0};
+
+	while ((c = getopt(argc, argv, "d:")) >= 0) {
+		if (c == 'd') {
+			if ((sep = ttk_parse_sep(optarg)) < 0) return 1;
+		}
+	}
+	if (argc == optind && isatty(fileno(stdin))) {
+		fprintf(stderr, "Usage: tabtk csv2tab [file.csv]\n");
+		return 1;
+	}
+
+	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
+	ks = ks_init(fp);
+	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
+	}
+	ks_destroy(ks);
+	gzclose(fp);
+	return 0;
+}
+
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 8);
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 9);
 	fprintf(stderr, "Command: cut         Unix cut with optional column reordering\n");
 	fprintf(stderr, "         num         summary statistics on a single numerical column\n");
 	fprintf(stderr, "         isct        intersect two files\n");

@@ -22,3 +22,28 @@ Tabtk Examples
 
         tabtk cut -d space -f 1-3 file.txt
 
+* Cut a CSV file:
+
+		tabtk cut -d csv -f 2-4 file.csv
+
+  Commas can appear in double-quotation marks.
+
+* Print lines in `streamed.txt` that matching `loaded.txt` on the first column:
+
+		tabtk isct loaded.txt streamed.txt
+
+* Print lines matching the first two columns:
+
+		tabtk isct -1 1,2 loaded.txt streamed.txt
+
+* Grep a pattern in specified columns:
+
+		tabtk grep -f 2 "^rs[0-9]+" file.vcf
+
+* Compute the mean, min and max of a numeric column:
+
+		tabtk num -c 2 file.txt
+
+* Compute the standard deviation and quartile:
+
+		tabtk num -Qc2 file.txt

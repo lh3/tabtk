@@ -451,7 +451,7 @@ int main_grep(int argc, char *argv[])
 static int usage()
 {
 	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 9);
+	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 13);
 	fprintf(stderr, "Command: cut         Unix cut with optional column reordering\n");
 	fprintf(stderr, "         num         summary statistics on a single numerical column\n");
 	fprintf(stderr, "         isct        intersect two files\n");
@@ -469,7 +469,7 @@ int main(int argc, char *argv[])
 	else if (strcmp(argv[1], "isct") == 0 || strcmp(argv[1], "intersect") == 0) ret = main_isct(argc-1, argv+1);
 	else if (strcmp(argv[1], "grep") == 0) ret = main_grep(argc-1, argv+1);
 	else {
-		fprintf(stderr, "[main] unrecognized commad '%s'. Abort!\n", argv[1]);
+		fprintf(stderr, "[main] unrecognized command '%s'. Abort!\n", argv[1]);
 		return 1;
 	}
 	return ret;

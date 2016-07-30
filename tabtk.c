@@ -414,11 +414,11 @@ int main_grep(int argc, char *argv[])
 		}
 	}
 	if (argc == optind || (argc == optind + 1 && isatty(fileno(stdin)))) {
-		fprintf(stderr, "\nUsage: tabtk grep [options] <pattern> [file.txt]\n\n");
-		fprintf(stderr, "Options: -d CHAR    delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
-		fprintf(stderr, "         -f STR     fields [null]\n");
-		fprintf(stderr, "         -n         output matching line number and column number\n");
-		fprintf(stderr, "\n");
+		fprintf(stderr, "Usage: tabtk grep [options] <pattern> [file.txt]\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -d CHAR    delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
+		fprintf(stderr, "  -f STR     fields [null]\n");
+		fprintf(stderr, "  -n         output matching line number and column number\n");
 		return 1;
 	}
 	if (fields && ttk_parse_cols(&cols, fields, 0) < 0) {
@@ -573,7 +573,7 @@ int main_view(int argc, char *argv[])
 
 static int usage()
 {
-	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 15);
+	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 16);
 	fprintf(stderr, "Commands:\n");
 	fprintf(stderr, "  cut      Unix cut with optional column reordering\n");
 	fprintf(stderr, "  num      summary statistics on a single numerical column\n");

@@ -17,12 +17,16 @@ KSORT_INIT_GENERIC(double)
 #include "kseq.h"
 KSTREAM_INIT(gzFile, gzread, 65536)
 
-#define SEP_SPACE 256
-#define SEP_CSV   257
+#define SEP_SPACE  256
+#define SEP_CSV    257
+#define SEP_SPACES 258
+
+typedef char *cstr_t;
 
 typedef kvec_t(uint32_t) vec32_t;
 typedef kvec_t(uint64_t) vec64_t;
 typedef kvec_t(double) vecdbl_t;
+typedef kvec_t(cstr_t) vecstr_t;
 
 /************************
  *** Generic routines ***
@@ -80,6 +84,13 @@ static inline void ttk_split(vec64_t *buf, int sep, int len, const char *str)
 				kv_push(uint64_t, *buf, (uint64_t)b<<32 | i);
 				b = i + 1;
 			}
+	} else if (sep == SEP_SPACES) {
+		int last_space = 1;
+		for (i = b = 0; i <= len; ++i) // mark columns
+			if (i == len || isspace(str[i])) {
+				kv_push(uint64_t, *buf, (uint64_t)b<<32 | i);
+				last_space = 1;
+			} else if (i < len) b = i;
 	} else if (sep == SEP_CSV) {
 		int state = 0;
 		for (i = b = 0; i <= len; ++i) {
@@ -131,11 +142,12 @@ int main_cut(int argc, char *argv[])
 	}
 	
 	if (argc == optind && isatty(fileno(stdin))) {
-		fprintf(stderr, "\nUsage: tabtk cut [options] [file.txt]\n\n");
-		fprintf(stderr, "Options: -d CHAR     delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
-		fprintf(stderr, "         -S CHAR     keep full lines starting with CHAR [null]\n");
-		fprintf(stderr, "         -f STR      fields to cut; format identical to Unix cut [null]\n");
-		fprintf(stderr, "         -r          reorder fields\n\n");
+		fprintf(stderr, "Usage: tabtk cut [options] [file.txt]\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -d CHAR     delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
+		fprintf(stderr, "  -S CHAR     keep full lines starting with CHAR [null]\n");
+		fprintf(stderr, "  -f STR      fields to cut; format identical to Unix cut [null]\n");
+		fprintf(stderr, "  -r          reorder fields\n");
 		return 1;
 	}
 
@@ -204,13 +216,13 @@ int main_isct(int argc, char *argv[])
 	}
 
 	if (optind + 1 > argc || (optind + 2 > argc && isatty(fileno(stdin)))) {
-		fprintf(stderr, "\nUsage:   tabtk isct [options] <loaded.txt> <streamed.txt>\n\n");
-		fprintf(stderr, "Options: -1 STR    field(s) of the loaded file [1]\n");
-		fprintf(stderr, "         -2 STR    field(s) of the streamed file [same as -1]\n");
-		fprintf(stderr, "         -d CHAR   delimitor [TAB]\n");
-		fprintf(stderr, "         -S CHAR   skip lines starting with CHAR [null]\n");
-		fprintf(stderr, "         -c        print lines not present in loaded.txt\n");
-		fputc('\n', stderr);
+		fprintf(stderr, "Usage: tabtk isct [options] <loaded.txt> <streamed.txt>\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -1 STR    field(s) of the loaded file [1]\n");
+		fprintf(stderr, "  -2 STR    field(s) of the streamed file [same as -1]\n");
+		fprintf(stderr, "  -d CHAR   delimitor [TAB]\n");
+		fprintf(stderr, "  -S CHAR   skip lines starting with CHAR [null]\n");
+		fprintf(stderr, "  -c        print lines not present in loaded.txt\n");
 		return 1;
 	}
 
@@ -291,13 +303,14 @@ int main_num(int argc, char *argv[])
 		else if (c == 'S') skip_char = optarg[0];
 	}
 	if (argc == optind && isatty(fileno(stdin))) {
-		fprintf(stderr, "\nUsage:   tabtk num [options] [file.txt]\n\n");
-		fprintf(stderr, "Options: -c INT     column number [1]\n");
-		fprintf(stderr, "         -q FLOAT   only compute quantile, negative to disable [-1]\n");
-		fprintf(stderr, "         -S CHAR    skip lines starting with CHAR [null]\n");
-		fprintf(stderr, "         -Q         output quartiles, stdandard deviation and skewness\n");
+		fprintf(stderr, "Usage: tabtk num [options] [file.txt]\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -c INT     column number [1]\n");
+		fprintf(stderr, "  -q FLOAT   only compute quantile, negative to disable [-1]\n");
+		fprintf(stderr, "  -S CHAR    skip lines starting with CHAR [null]\n");
+		fprintf(stderr, "  -Q         output quartiles, stdandard deviation and skewness\n");
 		fprintf(stderr, "\n");
-		fprintf(stderr, "Notes: number, mean, min, max[, std.dev, skewness, 25%%-percentile, median, 75%%, 2.5%%, 97.5%%, 1%%, 99%%, 0.5%%, 99.5%%]\n\n");
+		fprintf(stderr, "Notes: number, mean, min, max[, std.dev, skewness, 25%%-percentile, median, 75%%, 2.5%%, 97.5%%, 1%%, 99%%, 0.5%%, 99.5%%]\n");
 		return 1;
 	}
 	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
@@ -448,15 +461,120 @@ int main_grep(int argc, char *argv[])
 	return !match; // for grep, if no lines match, the return code is 1
 }
 
+/************
+ *** view ***
+ ************/
+
+static void print_buffer(vecstr_t *buf, vec32_t *max, int sep, vec64_t *col, int out_sep, int skip_char)
+{
+	int i, j;
+	uint32_t len = 0;
+	char *out;
+	for (i = 0; i < max->n; ++i)
+		len += max->a[i] + 1;
+	out = (char*)malloc(len + 1);
+	memset(out, 0x20, len);
+	out[len] = 0;
+	for (i = 0; i < buf->n; ++i) {
+		int l, k = 0, last = 0;
+		char *s = buf->a[i];
+		if (s[0] == skip_char) {
+			puts(s);
+			continue;
+		}
+		l = strlen(s);
+		ttk_split(col, sep, l, s);
+		for (j = 0; j < col->n; ++j) {
+			uint32_t st = col->a[j]>>32, en = (uint32_t)col->a[j];
+			memcpy(&out[k], &s[st], en - st);
+			out[k + max->a[j]] = out_sep;
+			last = k + (en - st);
+			k += max->a[j] + 1;
+		}
+		out[last] = 0;
+		free(buf->a[i]);
+		puts(out);
+		memset(out, 0x20, k + 1);
+	}
+	memset(max->a, 0, 4 * max->n);
+	buf->n = max->n = 0;
+	free(out);
+}
+
+int main_view(int argc, char *argv[])
+{
+	vec64_t col = {0,0,0};
+	vec32_t max = {0,0,0};
+	vecstr_t buf = {0,0,0};
+	int c, dret, skip_char = -1, sep = '\t', out_sep = '\t';
+	uint64_t tot_mem = 0, max_mem = 128 * 1024 * 1024;
+	gzFile fp;
+	kstream_t *ks;
+	kstring_t str = {0,0,0};
+
+	while ((c = getopt(argc, argv, "M:S:d:o:")) >= 0) {
+		if (c == 'S') {
+			skip_char = *optarg;
+		} else if (c == 'd') {
+			if ((sep = ttk_parse_sep(optarg)) < 0) return 1;
+		} else if (c == 'o') {
+			out_sep = *optarg;
+		} else if (c == 'M') {
+			char *p;
+			max_mem = strtol(optarg, &p, 10);
+			if (*p == 'k' || *p == 'K') max_mem *= 1024;
+			else if (*p == 'm' || *p == 'M') max_mem *= 1024 * 1024;
+			else if (*p == 'g' || *p == 'G') max_mem *= 1024 * 1024 * 1024;
+		}
+	}
+	if (argc == optind && isatty(fileno(stdin))) {
+		fprintf(stderr, "Usage: tabtk view [options] [file.txt]\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -M INT       peak memory [128M]\n");
+		fprintf(stderr, "  -S CHAR      don't reformat lines starting with CHAR []\n");
+		fprintf(stderr, "  -d CHAR      delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
+		fprintf(stderr, "  -o CHAR      output delimitor [TAB]\n");
+		return 1;
+	}
+	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
+	ks = ks_init(fp);
+	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
+		int i;
+		if (str.l + tot_mem > max_mem) {
+			print_buffer(&buf, &max, sep, &col, out_sep, skip_char);
+			tot_mem = 0;
+		}
+		if (skip_char < 0 || str.s[0] != skip_char) {
+			int old_n = max.n;
+			ttk_split(&col, sep, str.l, str.s);
+			kv_resize(uint32_t, max, col.n);
+			max.n = max.n > col.n? max.n : col.n;
+			memset(&max.a[old_n], 0, (max.n - old_n) * 4);
+			for (i = 0; i < col.n; ++i) {
+				uint32_t st = col.a[i]>>32, en = (uint32_t)col.a[i];
+				max.a[i] = max.a[i] > en - st? max.a[i] : en - st;
+			}
+		}
+		kv_push(cstr_t, buf, 0);
+		buf.a[buf.n-1] = strdup(str.s);
+	}
+	print_buffer(&buf, &max, sep, &col, out_sep, skip_char);
+	ks_destroy(ks);
+	gzclose(fp);
+
+	free(str.s); free(max.a); free(col.a); free(buf.a);
+	return 0;
+}
+
 static int usage()
 {
-	fprintf(stderr, "\n");
-	fprintf(stderr, "Usage:   tabtk-r%d <command> [arguments]\n\n", 13);
-	fprintf(stderr, "Command: cut         Unix cut with optional column reordering\n");
-	fprintf(stderr, "         num         summary statistics on a single numerical column\n");
-	fprintf(stderr, "         isct        intersect two files\n");
-	fprintf(stderr, "         grep        field-aware grep (slower than Unix grep)\n");
-	fprintf(stderr, "\n");
+	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 14);
+	fprintf(stderr, "Commands:\n");
+	fprintf(stderr, "  cut      Unix cut with optional column reordering\n");
+	fprintf(stderr, "  num      summary statistics on a single numerical column\n");
+	fprintf(stderr, "  isct     intersect two files\n");
+	fprintf(stderr, "  grep     field-aware grep (slower than Unix grep)\n");
+	fprintf(stderr, "  view     fixed-width printing\n");
 	return 1;
 }
 
@@ -468,6 +586,7 @@ int main(int argc, char *argv[])
 	else if (strcmp(argv[1], "num") == 0) ret = main_num(argc-1, argv+1);
 	else if (strcmp(argv[1], "isct") == 0 || strcmp(argv[1], "intersect") == 0) ret = main_isct(argc-1, argv+1);
 	else if (strcmp(argv[1], "grep") == 0) ret = main_grep(argc-1, argv+1);
+	else if (strcmp(argv[1], "view") == 0) ret = main_view(argc-1, argv+1);
 	else {
 		fprintf(stderr, "[main] unrecognized command '%s'. Abort!\n", argv[1]);
 		return 1;

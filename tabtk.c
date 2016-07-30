@@ -465,13 +465,13 @@ int main_grep(int argc, char *argv[])
  *** view ***
  ************/
 
-static void print_buffer(vecstr_t *buf, vec32_t *max, int sep, vec64_t *col, int out_sep, int skip_char)
+static void print_buffer(vecstr_t *buf, vec32_t *max, int sep, vec64_t *col, int out_sep, int skip_char, int tlen)
 {
 	int i, j;
 	uint32_t len = 0;
 	char *out;
 	for (i = 0; i < max->n; ++i)
-		len += max->a[i] + 1;
+		len += (max->a[i] < tlen? max->a[i] : tlen) + 1;
 	out = (char*)malloc(len + 1);
 	memset(out, 0x20, len);
 	out[len] = 0;
@@ -486,10 +486,12 @@ static void print_buffer(vecstr_t *buf, vec32_t *max, int sep, vec64_t *col, int
 		ttk_split(col, sep, l, s);
 		for (j = 0; j < col->n; ++j) {
 			uint32_t st = col->a[j]>>32, en = (uint32_t)col->a[j];
-			memcpy(&out[k], &s[st], en - st);
-			out[k + max->a[j]] = out_sep;
-			last = k + (en - st);
-			k += max->a[j] + 1;
+			int u = en - st < tlen? en - st : tlen;
+			int v = max->a[j] < tlen? max->a[j] : tlen;
+			memcpy(&out[k], &s[st], u);
+			out[k + v] = out_sep;
+			last = k + u;
+			k += v + 1;
 		}
 		out[last] = 0;
 		free(buf->a[i]);
@@ -506,19 +508,21 @@ int main_view(int argc, char *argv[])
 	vec64_t col = {0,0,0};
 	vec32_t max = {0,0,0};
 	vecstr_t buf = {0,0,0};
-	int c, dret, skip_char = -1, sep = '\t', out_sep = '\t';
+	int c, dret, skip_char = -1, sep = '\t', out_sep = '\t', tlen = INT_MAX;
 	uint64_t tot_mem = 0, max_mem = 128 * 1024 * 1024;
 	gzFile fp;
 	kstream_t *ks;
 	kstring_t str = {0,0,0};
 
-	while ((c = getopt(argc, argv, "M:S:d:o:")) >= 0) {
+	while ((c = getopt(argc, argv, "M:S:d:o:l:")) >= 0) {
 		if (c == 'S') {
 			skip_char = *optarg;
 		} else if (c == 'd') {
 			if ((sep = ttk_parse_sep(optarg)) < 0) return 1;
 		} else if (c == 'o') {
 			out_sep = *optarg;
+		} else if (c == 'l') {
+			tlen = atoi(optarg);
 		} else if (c == 'M') {
 			char *p;
 			max_mem = strtol(optarg, &p, 10);
@@ -534,6 +538,7 @@ int main_view(int argc, char *argv[])
 		fprintf(stderr, "  -S CHAR      don't reformat lines starting with CHAR []\n");
 		fprintf(stderr, "  -d CHAR      delimitor, a single CHAR or 'space' for both SPACE and TAB or 'csv' [TAB]\n");
 		fprintf(stderr, "  -o CHAR      output delimitor [TAB]\n");
+		fprintf(stderr, "  -l INT       truncate long fields to INT [inf]\n");
 		return 1;
 	}
 	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
@@ -541,7 +546,7 @@ int main_view(int argc, char *argv[])
 	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
 		int i;
 		if (str.l + tot_mem > max_mem) {
-			print_buffer(&buf, &max, sep, &col, out_sep, skip_char);
+			print_buffer(&buf, &max, sep, &col, out_sep, skip_char, tlen);
 			tot_mem = 0;
 		}
 		if (skip_char < 0 || str.s[0] != skip_char) {
@@ -558,7 +563,7 @@ int main_view(int argc, char *argv[])
 		kv_push(cstr_t, buf, 0);
 		buf.a[buf.n-1] = strdup(str.s);
 	}
-	print_buffer(&buf, &max, sep, &col, out_sep, skip_char);
+	print_buffer(&buf, &max, sep, &col, out_sep, skip_char, tlen);
 	ks_destroy(ks);
 	gzclose(fp);
 
@@ -568,7 +573,7 @@ int main_view(int argc, char *argv[])
 
 static int usage()
 {
-	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 14);
+	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 15);
 	fprintf(stderr, "Commands:\n");
 	fprintf(stderr, "  cut      Unix cut with optional column reordering\n");
 	fprintf(stderr, "  num      summary statistics on a single numerical column\n");

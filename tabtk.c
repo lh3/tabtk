@@ -562,6 +562,7 @@ int main_view(int argc, char *argv[])
 		}
 		kv_push(cstr_t, buf, 0);
 		buf.a[buf.n-1] = strdup(str.s);
+		tot_mem += str.l;
 	}
 	print_buffer(&buf, &max, sep, &col, out_sep, skip_char, tlen);
 	ks_destroy(ks);
@@ -573,7 +574,7 @@ int main_view(int argc, char *argv[])
 
 static int usage()
 {
-	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 16);
+	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 17);
 	fprintf(stderr, "Commands:\n");
 	fprintf(stderr, "  cut      Unix cut with optional column reordering\n");
 	fprintf(stderr, "  num      summary statistics on a single numerical column\n");

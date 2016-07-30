@@ -36,6 +36,12 @@ Tabtk Examples
 
 		tabtk isct -1 1,2 loaded.txt streamed.txt
 
+* Fixed-width view of a TAB delimited file and truncate long fields to 20
+
+		tabtk view -l 20 tab.txt | less -S
+
+  This by default loads 16MB data to RAM, not the whole file.
+
 * Grep a pattern in specified columns:
 
 		tabtk grep -f 2 "^rs[0-9]+" file.vcf

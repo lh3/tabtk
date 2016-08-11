@@ -509,7 +509,7 @@ int main_view(int argc, char *argv[])
 	vec32_t max = {0,0,0};
 	vecstr_t buf = {0,0,0};
 	int c, dret, skip_char = -1, sep = '\t', out_sep = '\t', tlen = INT_MAX;
-	uint64_t tot_mem = 0, max_mem = 16 * 1024 * 1024;
+	uint64_t tot_mem = 0, max_mem = 64 * 1024 * 1024;
 	gzFile fp;
 	kstream_t *ks;
 	kstring_t str = {0,0,0};
@@ -574,7 +574,7 @@ int main_view(int argc, char *argv[])
 
 static int usage()
 {
-	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 18);
+	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 19);
 	fprintf(stderr, "Commands:\n");
 	fprintf(stderr, "  cut      Unix cut with optional column reordering\n");
 	fprintf(stderr, "  num      summary statistics on a single numerical column\n");

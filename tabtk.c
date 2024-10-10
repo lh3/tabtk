@@ -233,7 +233,7 @@ int main_isct(int argc, char *argv[])
 	else ttk_parse_cols(&cols2, fields2, 0);
 
 	h = kh_init(strset);
-	fp = gzopen(argv[optind], "r");
+	fp = strcmp(argv[optind], "-") != 0? gzopen(argv[optind], "r") : gzdopen(0, "r");
 	ks = ks_init(fp);
 	while (ks_getuntil2(ks, KS_SEP_LINE, &str, &dret, 0) >= 0) {
 		int i, absent;
@@ -574,7 +574,7 @@ int main_view(int argc, char *argv[])
 
 static int usage()
 {
-	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 19);
+	fprintf(stderr, "Usage: tabtk-r%d <command> [arguments]\n", 20);
 	fprintf(stderr, "Commands:\n");
 	fprintf(stderr, "  cut      Unix cut with optional column reordering\n");
 	fprintf(stderr, "  num      summary statistics on a single numerical column\n");
@@ -590,7 +590,7 @@ int main(int argc, char *argv[])
 	if (argc == 1) return usage();
 	if (strcmp(argv[1], "cut") == 0) ret = main_cut(argc-1, argv+1);
 	else if (strcmp(argv[1], "num") == 0) ret = main_num(argc-1, argv+1);
-	else if (strcmp(argv[1], "isct") == 0 || strcmp(argv[1], "intersect") == 0) ret = main_isct(argc-1, argv+1);
+	else if (strcmp(argv[1], "isct") == 0 || strcmp(argv[1], "intersect") == 0 || strcmp(argv[1], "isec") == 0) ret = main_isct(argc-1, argv+1);
 	else if (strcmp(argv[1], "grep") == 0) ret = main_grep(argc-1, argv+1);
 	else if (strcmp(argv[1], "view") == 0) ret = main_view(argc-1, argv+1);
 	else {
